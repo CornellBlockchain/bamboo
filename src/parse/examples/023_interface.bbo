@@ -10,6 +10,6 @@ contract A()
 {
     case(uint256 f(B b))
     {
-		return b.f(b);
-	}
+    	return b.f(b) reentrance {} then become A();
+    }
 }

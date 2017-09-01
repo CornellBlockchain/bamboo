@@ -20,6 +20,7 @@ rule read =
   | comment  { new_line lexbuf; read lexbuf }
   | newline  { new_line lexbuf; read lexbuf }
   | "contract" { CONTRACT }
+  | "interface" { INTERFACE }
   | "default"  { DEFAULT }
   | "case"     { CASE }
   | "abort"    { ABORT }
