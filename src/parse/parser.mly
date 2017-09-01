@@ -1,4 +1,5 @@
 %token CONTRACT
+%token INTERFACE
 %token <string> IDENT
 %token ADDRESS
 %token UINT256
@@ -87,7 +88,16 @@ contract:
     SEMICOLON;
     { Syntax.Event { Syntax.event_arguments = args
       ; event_name = name
-      }}
+    }}
+  | INTERFACE;
+    name = IDENT;
+    LBRACE;
+    css = list(terminated(abstract_header, SEMICOLON));
+    RBRACE;
+    { Syntax.Interface
+        { Syntax.interface_cases = css;
+           interface_name = name;
+     }}
   ;
 
 case:
@@ -131,6 +141,30 @@ case_header:
     }
   ;
 
+abstract_header:
+  | DEFAULT { Syntax.DefaultCaseHeader }
+  | CASE; LPAR;
+    return_typ = typ;
+    name = IDENT;
+    args = plist(abstract_arg);
+    RPAR { Syntax.UsualCaseHeader
+      { case_return_typ = [return_typ] (* multi returns not supported *)
+      ; Syntax.case_name = name
+      ; case_arguments = args
+      }
+    }
+  | CASE; LPAR;
+    VOID;
+    name = IDENT;
+    args = plist(abstract_arg);
+    RPAR { Syntax.UsualCaseHeader
+      { case_return_typ = []
+      ; Syntax.case_name = name
+      ; case_arguments = args
+      }
+    }
+    ;
+
 arg:
   | t = typ;
     i = IDENT
@@ -155,6 +189,20 @@ event_arg:
       }
     }
     ;
+
+abstract_arg:
+  | t = typ {{ Syntax.arg_typ = t
+             ; Syntax.arg_ident = ""
+             ; Syntax.arg_location = None
+            }}
+  | t = typ;
+    i = IDENT
+    { { Syntax.arg_typ = t
+      ; Syntax.arg_ident = i
+      ; Syntax.arg_location = None
+      }
+    }
+  ;
 
 typ:
   | UINT256 { Syntax.Uint256Type }
