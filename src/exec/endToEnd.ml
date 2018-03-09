@@ -19,6 +19,7 @@
 
 (* Yoichi Hirai: I modified the above-mentinoed code. *)
 
+
 exception Connection_reset
 
 let lib_version = "0.1.1"
@@ -37,6 +38,8 @@ module Utils = struct
       Unix.close s;
       raise e
 
+  let minisleep (sec: float) =
+    ignore (Unix.select [] [] [] sec)
 end
 
 type connection =
@@ -164,7 +167,7 @@ let test_mineBlocks s (num : int) =
     Rpc.({ name = "test_mineBlocks"
          ; params = [Rpc.Int (Int64.of_int num)]
          }) in
-  let ()  = ignore (do_rpc_unix s call) in
+  let ()  = ignore (pick_result (do_rpc_unix s call)) in
   ()
 
 let test_rawSign s (addr : address) (data : string) =
@@ -177,7 +180,7 @@ let test_rawSign s (addr : address) (data : string) =
   Rpc.string_of_rpc json
 
 
-let eth_getBalance s (addr : address) : Big_int.big_int =
+let eth_getBalance s (addr : address) : WrapBn.t =
   let call : Rpc.call =
     Rpc.({ name = "eth_getBalance"
          ; params = [rpc_of_address addr; Rpc.rpc_of_string "latest"]
@@ -291,7 +294,7 @@ let personal_unlockAccount s addr =
 
 let eth_getStorageAt s addr slot =
   let call = Rpc.({ name = "eth_getStorageAt"
-                  ; params = [rpc_of_address addr; rpc_of_string (Big_int.string_of_big_int slot); rpc_of_string "latest"]
+                  ; params = [rpc_of_address addr; rpc_of_string (WrapBn.string_of_big_int slot); rpc_of_string "latest"]
              }) in
   let ret = do_rpc_unix s call in
   let json = pick_result ret in
@@ -299,7 +302,7 @@ let eth_getStorageAt s addr slot =
 
 let wait_till_mined s old_block =
   while eth_blockNumber s = old_block do
-    Unix.sleepf 0.01
+    Utils.minisleep 0.01
   done
 
 let sample_file_name : string = "./src/parse/examples/006auction_first_case.bbo"
@@ -369,7 +372,7 @@ let testing_006 s my_acc =
     } in
   let receipt = call s tr in
   let n = eth_getStorageAt s contract_address (Big_int.big_int_of_int 4) in
-  let () = Printf.printf "got storage %s\n" (Big_int.string_of_big_int n) in
+  let () = Printf.printf "got storage %s\n" (WrapBn.string_of_big_int n) in
   let () = assert (Big_int.(eq_big_int n (big_int_of_int 100))) in
   ()
 
@@ -387,10 +390,6 @@ let constructor_arg_test s =
   let () = Printf.printf "didn't find code! good!\n" in
   my_acc
 
-(** XXX this should move to a library *)
-let compute_signature_hash (signature : string) : string =
-  String.sub (Ethereum.string_keccak signature) 0 8
-
 let testing_00bb s my_acc =
   let initcode_compiled : string = CompileFile.compile_file "./src/parse/examples/00bbauction_first_named_case.bbo" in
   let initcode_args : string =
@@ -402,7 +401,7 @@ let testing_00bb s my_acc =
   let () = assert (String.length deployed > 2) in
   let () = Printf.printf "saw code! %s\n" deployed in
   let storage_first_word = eth_getStorageAt s contract_address (Big_int.big_int_of_int 0) in
-  let () = Printf.printf "first word! %s\n" (Big_int.string_of_big_int storage_first_word) in
+  let () = Printf.printf "first word! %s\n" (WrapBn.string_of_big_int storage_first_word) in
   let original = eth_getStorageAt s contract_address (Big_int.big_int_of_int 4) in
   let () = assert (Big_int.(eq_big_int original zero_big_int)) in
   let tr : eth_transaction =
@@ -410,7 +409,7 @@ let testing_00bb s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "100"
-    ; data = compute_signature_hash "bid()"
+    ; data = Ethereum.compute_signature_hash "bid()"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let receipt = call s tr in
@@ -439,7 +438,7 @@ let testing_00b s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = compute_signature_hash "highest_bid()"
+    ; data = Ethereum.compute_signature_hash "highest_bid()"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s highest_bid in
@@ -449,7 +448,7 @@ let testing_00b s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "100"
-    ; data = compute_signature_hash "bid()"
+    ; data = Ethereum.compute_signature_hash "bid()"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let receipt = call s tr in
@@ -470,7 +469,7 @@ let testing_010 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(bool,bool)") ^ "0000000000000000000000000000000000000000000000000000000005f5e1000000000000000000000000000000000000000000000000000000000005f5e100"
+    ; data = (Ethereum.compute_signature_hash "f(bool,bool)") ^ "0000000000000000000000000000000000000000000000000000000005f5e1000000000000000000000000000000000000000000000000000000000005f5e100"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s both in
@@ -490,7 +489,7 @@ let testing_011 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(address,bytes32)") ^ "0000000000000000000000000000000000000000000000000000000005f5e1000000000000000000000000000000000000000000000000000000000005f5e100"
+    ; data = (Ethereum.compute_signature_hash "f(address,bytes32)") ^ "0000000000000000000000000000000000000000000000000000000005f5e1000000000000000000000000000000000000000000000000000000000005f5e100"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s both in
@@ -511,7 +510,7 @@ let random_ecdsa s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = "0x" ^ (compute_signature_hash "a(bytes32,uint8,bytes32,bytes32)") ^
+    ; data = "0x" ^ (Ethereum.compute_signature_hash "a(bytes32,uint8,bytes32,bytes32)") ^
         "0000000000000000000000000000000000000000000000000000000005f5e100"^
                "0000000000000000000000000000000000000000000000000000000005f5e100"^
                  "0000000000000000000000000000000000000000000000000000000005f5e100"^
@@ -542,7 +541,7 @@ let correct_ecdsa s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = "0x" ^ (compute_signature_hash "a(bytes32,uint8,bytes32,bytes32)") ^
+    ; data = "0x" ^ (Ethereum.compute_signature_hash "a(bytes32,uint8,bytes32,bytes32)") ^
         "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -570,7 +569,7 @@ let testing_00i s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(uint8)") ^ zero_word
+    ; data = (Ethereum.compute_signature_hash "f(uint8)") ^ zero_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s c in
@@ -590,7 +589,7 @@ let testing_013 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "a(bytes32)") ^ zero_word
+    ; data = (Ethereum.compute_signature_hash "a(bytes32)") ^ zero_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s c in
@@ -613,7 +612,7 @@ let testing_022 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(uint256,uint256,uint256)") ^ one_word ^ one_word ^ zero_word
+    ; data = (Ethereum.compute_signature_hash "f(uint256,uint256,uint256)") ^ one_word ^ one_word ^ zero_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s c in
@@ -633,7 +632,7 @@ let testing_014 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(bool,bool)") ^ zero_word ^ one_word
+    ; data = (Ethereum.compute_signature_hash "f(bool,bool)") ^ zero_word ^ one_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call s c in
@@ -653,7 +652,7 @@ let testing_016 s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "300"
-    ; data = (compute_signature_hash "pass(address,uint256)") ^ "000000000000000000000000000000000000000000000000000000000000aaaa" ^ "0000000000000000000000000000000000000000000000000000000000000001"
+    ; data = (Ethereum.compute_signature_hash "pass(address,uint256)") ^ "000000000000000000000000000000000000000000000000000000000000aaaa" ^ "0000000000000000000000000000000000000000000000000000000000000001"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let tx = eth_sendTransaction s c in
@@ -663,7 +662,7 @@ let testing_016 s my_acc =
   ()
 
 let pad_to_word str =
-  let str = Ethereum.strip_0x str in
+  let str = WrapCryptokit.strip_0x str in
   let len = String.length str in
   let () = assert (len <= 64) in
   let padded = 64 - len in
@@ -672,8 +671,8 @@ let pad_to_word str =
 
 let testing_00h_timeout s my_acc =
   let initcode_compiled : string = CompileFile.compile_file "./src/parse/examples/00h_payment_channel.bbo" in
-  let sender = pad_to_word (Ethereum.strip_0x my_acc) in
-  let recipient = pad_to_word (Ethereum.strip_0x my_acc) in
+  let sender = pad_to_word (WrapCryptokit.strip_0x my_acc) in
+  let recipient = pad_to_word (WrapCryptokit.strip_0x my_acc) in
   let startDate = "0000000000000000000000000000000000000000000000000000000000010000" in
   let endDate   = "0000000000000000000000000000000000000000000000000000000000020000" in
   let initdata = initcode_compiled ^
@@ -694,7 +693,7 @@ let testing_00h_timeout s my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = compute_signature_hash "ChannelTimeOut()"
+    ; data = Ethereum.compute_signature_hash "ChannelTimeOut()"
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let receipt = call s c in
@@ -705,9 +704,9 @@ let testing_00h_timeout s my_acc =
 
 let testing_00h_early channel my_acc =
   let initcode_compiled : string = CompileFile.compile_file "./src/parse/examples/00h_payment_channel.bbo" in
-  let sender = pad_to_word (Ethereum.strip_0x my_acc) in
+  let sender = pad_to_word (WrapCryptokit.strip_0x my_acc) in
   let recv   = personal_newAccount channel in
-  let recipient = pad_to_word (Ethereum.strip_0x recv) in
+  let recipient = pad_to_word (WrapCryptokit.strip_0x recv) in
 
   (* give receiver some Ether so that she can send transactions *)
   let c : eth_transaction =
@@ -731,7 +730,7 @@ let testing_00h_early channel my_acc =
   let balance = eth_getBalance channel contract_address in
   let () = assert (Big_int.(eq_big_int balance (big_int_of_string "0x3000000000"))) in
   let value = "0000000000000000000000000000000000000000000000000000002000000000" in
-  let concatenation = (Ethereum.strip_0x contract_address) ^ value in
+  let concatenation = (WrapCryptokit.strip_0x contract_address) ^ value in
   let () = Printf.printf "concatenation: %s\n" concatenation in
   let hash = Ethereum.hex_keccak concatenation in
   let () = Printf.printf "hash:          %s\n" hash in
@@ -749,7 +748,7 @@ let testing_00h_early channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = "0x" ^ compute_signature_hash "CloseChannel(bytes32,uint8,bytes32,bytes32,uint256)" ^
+    ; data = "0x" ^ Ethereum.compute_signature_hash "CloseChannel(bytes32,uint8,bytes32,bytes32,uint256)" ^
                hash ^ v ^ r ^ s ^ value
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -770,7 +769,7 @@ let testing_00h_early channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = compute_signature_hash "CloseChannel(bytes32,uint8,bytes32,bytes32,uint256)" ^
+    ; data = Ethereum.compute_signature_hash "CloseChannel(bytes32,uint8,bytes32,bytes32,uint256)" ^
                hash ^ v ^ r ^ s ^ value
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -802,7 +801,7 @@ let testing_mapmap_non_interference channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "set(bool,address,bool)")^
+    ; data = (Ethereum.compute_signature_hash "set(bool,address,bool)")^
                one_word ^ zero_word ^ one_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -815,7 +814,7 @@ let testing_mapmap_non_interference channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "get(bool,address)") ^
+    ; data = (Ethereum.compute_signature_hash "get(bool,address)") ^
                one_word ^ zero_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -830,7 +829,7 @@ let testing_mapmap_non_interference channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "get(bool,address)") ^
+    ; data = (Ethereum.compute_signature_hash "get(bool,address)") ^
                zero_word ^ zero_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -843,7 +842,7 @@ let testing_mapmap_non_interference channel my_acc =
 
 let testing_019 channel my_acc =
   let initcode_compiled : string = CompileFile.compile_file "./src/parse/examples/019_something.bbo" in
-  let initdata = initcode_compiled ^ "00000000000000000000000000000000000000000000000000005af3107a4000" ^ (pad_to_word (Ethereum.strip_0x my_acc)) in
+  let initdata = initcode_compiled ^ "00000000000000000000000000000000000000000000000000005af3107a4000" ^ (pad_to_word (WrapCryptokit.strip_0x my_acc)) in
   let receipt = deploy_code channel my_acc initdata "0" in
   let contract_address = receipt.contractAddress in
   let deployed = eth_getCode channel contract_address in
@@ -865,7 +864,7 @@ let testing_019 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "balanceOf(address)")^(pad_to_word (Ethereum.strip_0x my_acc))
+    ; data = (Ethereum.compute_signature_hash "balanceOf(address)")^(pad_to_word (WrapCryptokit.strip_0x my_acc))
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call channel ask_my_balance in
@@ -887,7 +886,7 @@ let testing_land_neq channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f()")
+    ; data = (Ethereum.compute_signature_hash "f()")
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
   let answer = eth_call channel initial_trans in
@@ -910,13 +909,13 @@ let testing_01a channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "e(uint256)")^one_word
+    ; data = (Ethereum.compute_signature_hash "e(uint256)")^one_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
   let receipt = call channel write_to_true in
   let () = assert (List.length receipt.logs = 1) in
-  let [log] = receipt.logs in
+  let log = List.hd receipt.logs in
   let () = assert (List.length log.topics = 2) in
 
   ()
@@ -939,12 +938,90 @@ let test_plus_mult channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "f(uint256,uint256,uint256)")^one_word^two_word^three_word
+    ; data = (Ethereum.compute_signature_hash "f(uint256,uint256,uint256)")^one_word^two_word^three_word
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
   let answer = eth_call channel c in
   let () = assert (answer = "0x" ^ seven_word) in
+
+  ()
+
+(* takes an address in hex (0x followed by 40 characters) form and returns it as a word (64 characters without 0x) *)
+let address_as_word address =
+  let () = assert (String.length address = 42) in
+  let () = assert (String.sub address 0 2 = "0x") in
+  (String.make 24 '0') ^ (String.sub address 2 40)
+
+let testing_024 channel my_acc =
+  let initcode_compiled : string = CompileFile.compile_file "./src/parse/examples/024_vault_shorter.bbo" in
+  let recover_key = my_acc in
+  let () = Printf.printf "recover: %s\n" recover_key in
+  let vault_key = personal_newAccount channel in
+  let () = Printf.printf "vault: %s\n" vault_key in
+  let hot = personal_newAccount channel in
+  let () = Printf.printf "hot: %s\n" hot in
+
+  let c : eth_transaction =
+    { from = my_acc
+    ; _to = vault_key
+    ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
+    ; value = "2200000000000000000"
+    ; data = "0x00"
+    ; gasprice = "0x0000000000000000000000000000000000000000000000000000005af3107a40"
+    } in
+  let () = ignore (call channel c) in
+
+  let c : eth_transaction =
+    { from = my_acc
+    ; _to = hot
+    ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
+    ; value = "2200000000000000000"
+    ; data = "0x00"
+    ; gasprice = "0x0000000000000000000000000000000000000000000000000000005af3107a40"
+    } in
+  let () = ignore (call channel c) in
+
+
+  let initdata = initcode_compiled ^ address_as_word vault_key ^ address_as_word recover_key in
+  let receipt = deploy_code channel my_acc initdata "10000" in
+  let contract_address = receipt.contractAddress in
+  let deployed = eth_getCode channel contract_address in
+  let () = assert (String.length deployed > 2) in
+  let () = Printf.printf "saw code!\n" in
+  let balance = eth_getBalance channel contract_address in
+  let () = assert (Big_int.(eq_big_int balance (big_int_of_int 10000))) in
+
+  (* initiate a withdrawal *)
+  let unvault : eth_transaction =
+    { from = vault_key
+    ; _to = contract_address
+    ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
+    ; value = "0"
+    ; data = (Ethereum.compute_signature_hash "unvault(uint256,address)")^
+               (pad_to_word "50")^(address_as_word hot)
+    ; gasprice = "0x0000000000000000000000000000000000000000000000000000005af3107a40"
+    } in
+  let unvault_tx = call channel unvault in
+  let () = Printf.printf "unvault_tx: %Ld\n" unvault_tx.blockNumber in
+
+  (* wait for two seconds *)
+  let () = Unix.sleep 2 in
+  let () = advance_block channel in
+
+  let redeem : eth_transaction =
+    { from = hot
+    ; _to = contract_address
+    ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
+    ; value = "0"
+    ; data = (Ethereum.compute_signature_hash "redeem()")
+    ; gasprice = "0x0000000000000000000000000000000000000000000000000000005af3107a40"
+    } in
+  let redeem_tx = call channel redeem in
+  let () = Printf.printf "redeem_tx: %Ld\n" redeem_tx.blockNumber in
+  let balance = eth_getBalance channel hot in
+  let () = Printf.printf "hot acccount now has %s\n%!" (WrapBn.string_of_big_int balance) in
+  let () = assert(Big_int.(eq_big_int balance (big_int_of_string "2198885220000000080"))) in
 
   ()
 
@@ -975,7 +1052,7 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "100000000000000000"
-    ; data = (compute_signature_hash "buy(uint256)")^less_than_half_amount
+    ; data = (Ethereum.compute_signature_hash "buy(uint256)")^less_than_half_amount
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -988,7 +1065,7 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "balanceOf(address)")^(pad_to_word (Ethereum.strip_0x my_acc))
+    ; data = (Ethereum.compute_signature_hash "balanceOf(address)")^(pad_to_word (WrapCryptokit.strip_0x my_acc))
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -1011,8 +1088,8 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "approve(address,uint256)")^
-               (pad_to_word (Ethereum.strip_0x second)) ^
+    ; data = (Ethereum.compute_signature_hash "approve(address,uint256)")^
+               (pad_to_word (WrapCryptokit.strip_0x second)) ^
                  less_than_half_amount
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -1025,9 +1102,9 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "allowance(address,address)")^
-               (pad_to_word (Ethereum.strip_0x my_acc)) ^
-               (pad_to_word (Ethereum.strip_0x second))
+    ; data = (Ethereum.compute_signature_hash "allowance(address,address)")^
+               (pad_to_word (WrapCryptokit.strip_0x my_acc)) ^
+               (pad_to_word (WrapCryptokit.strip_0x second))
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -1039,9 +1116,9 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "transferFrom(address,address,uint256)")^
-               (pad_to_word (Ethereum.strip_0x my_acc)) ^
-               (pad_to_word (Ethereum.strip_0x second)) ^
+    ; data = (Ethereum.compute_signature_hash "transferFrom(address,address,uint256)")^
+               (pad_to_word (WrapCryptokit.strip_0x my_acc)) ^
+               (pad_to_word (WrapCryptokit.strip_0x second)) ^
                  less_than_half_amount
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
@@ -1053,7 +1130,7 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "balanceOf(address)")^(pad_to_word (Ethereum.strip_0x second))
+    ; data = (Ethereum.compute_signature_hash "balanceOf(address)")^(pad_to_word (WrapCryptokit.strip_0x second))
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -1066,9 +1143,9 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "allowance(address,address)")^
-               (pad_to_word (Ethereum.strip_0x my_acc)) ^
-               (pad_to_word (Ethereum.strip_0x second))
+    ; data = (Ethereum.compute_signature_hash "allowance(address,address)")^
+               (pad_to_word (WrapCryptokit.strip_0x my_acc)) ^
+               (pad_to_word (WrapCryptokit.strip_0x second))
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -1084,7 +1161,7 @@ let test_erc20 channel my_acc =
     ; _to = contract_address
     ; gas = "0x0000000000000000000000000000000000000000000000000000000005f5e100"
     ; value = "0"
-    ; data = (compute_signature_hash "sell(uint256,uint256)")^less_than_half_amount^weis
+    ; data = (Ethereum.compute_signature_hash "sell(uint256,uint256)")^less_than_half_amount^weis
     ; gasprice = "0x00000000000000000000000000000000000000000000000000005af3107a4000"
     } in
 
@@ -1117,6 +1194,7 @@ let () =
   let () = testing_01a s my_acc in
   let () = test_erc20 s my_acc in
   let () = testing_022 s my_acc in
+  let () = testing_024 s my_acc in
   let () = Unix.close s in
   ()
 

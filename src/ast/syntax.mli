@@ -50,6 +50,8 @@ and 'exp_annot exp = 'exp_annot exp_inner * 'exp_annot
 and 'exp_annot exp_inner =
   | TrueExp
   | FalseExp
+  | DecLit256Exp of WrapBn.t
+  | DecLit8Exp of WrapBn.t
   | NowExp
   | FunctionCallExp of 'exp_annot function_call
   | IdentifierExp of string
@@ -131,8 +133,14 @@ type 'exp_annot contract =
   ; contract_cases : 'exp_annot case list
   }
 
+type interface =
+  { interface_name : string
+  ; interface_cases : case_header list
+  }
+
 type 'exp_annot toplevel =
   | Contract of 'exp_annot contract
+  | Interface of interface
   | Event of event
 
 val contract_name_of_return_cont : 'exp exp -> string option

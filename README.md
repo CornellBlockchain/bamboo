@@ -12,15 +12,16 @@ See [manifest](doc/manifest.md) for the motivation, or [tutorial](doc/tutorial.m
 
 * [A payment channel](./src/parse/examples/00h_payment_channel.bbo)
 * [An ERC20 contract](./src/parse/examples/01b_erc20better.bbo)
+* [A vault](https://medium.com/@pirapira/implementing-a-vault-in-bamboo-9c08241b6755)
 
 ## Compiler
 
 The Bamboo compiler sometimes produces bytecode, which needs to be tested.
 
-As preparattion,
+As preparation,
 * install [opam](http://opam.ocaml.org/doc/Install.html) with OCaml 4.04.1
 * `opam install bamboo`
-should intall `bamboo`.
+should install `bamboo`.
 
 When you check out this repository,
 ```
@@ -34,6 +35,17 @@ bamboo --abi < src/parse/examples/006auction_first_case.bbo
 prints ABI.
 ```
 [{"type": "constructor", "inputs":[{"name": "_beneficiary", "type": "address"},{"name": "_bidding_time", "type": "uint256"},{"name": "_highest_bid", "type": "uint256"}], "name": "auction", "outputs":[], "payable": true},{"type":"fallback","inputs": [],"outputs": [],"payable": true}]
+```
+
+## Developing Bamboo
+
+To try Bamboo in your local environment, run `make install` from the project folder. That should install all dependencies.
+Once the installation process is done, run `eval $(opam config env)` and then you can build all targets using `make`, and run the tests with `make test`.
+
+When you modify the OCaml source of Bamboo, you can try your version by
+```
+$ make
+$ ./lib/bs/native/bamboo.native < src/parse/examples/006auction_first_case.bbo
 ```
 
 ## How to Contribute

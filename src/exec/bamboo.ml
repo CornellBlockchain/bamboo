@@ -27,7 +27,7 @@ let parse_with_error lexbuf =
 
 let abi_option = BatOptParse.StdOpt.store_true ()
 
-let optparser : BatOptParse.OptParser.t = BatOptParse.OptParser.make ~version:"0.0.01" ~usage:"bamboo [options] < src.bbo" ~description:"By default, bamboo compiles the source from stdin and prints EVM bytecode in stdout.  Do not trust the output as the compiler still contains bugs probably." ()
+let optparser : BatOptParse.OptParser.t = BatOptParse.OptParser.make ~version:"0.0.02" ~usage:"bamboo [options] < src.bbo" ~description:"By default, bamboo compiles the source from stdin and prints EVM bytecode in stdout.  Do not trust the output as the compiler still contains bugs probably." ()
 
 let () =
   let () = BatOptParse.OptParser.add optparser ~long_names:["abi"] ~help:"print the ABI interface in JSON" abi_option in
@@ -56,7 +56,7 @@ let () =
        List.map (fun (id, const) -> (id, layout_info_from_constructor_compiled const)) constructors in
      let layout = LayoutInfo.construct_layout_info contracts_layout_info in
      let runtime_compiled = compile_runtime layout contracts in
-     let bytecode : Big_int.big_int Evm.program =
+     let bytecode : WrapBn.t Evm.program =
        compose_bytecode constructors runtime_compiled (fst (List.hd contracts)) in
      let () =
        if abi then

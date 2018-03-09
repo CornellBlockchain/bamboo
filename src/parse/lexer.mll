@@ -20,6 +20,7 @@ rule read =
   | comment  { new_line lexbuf; read lexbuf }
   | newline  { new_line lexbuf; read lexbuf }
   | "contract" { CONTRACT }
+  | "interface" { INTERFACE }
   | "default"  { DEFAULT }
   | "case"     { CASE }
   | "abort"    { ABORT }
@@ -70,5 +71,10 @@ rule read =
   | "event" { EVENT }
   | "log" { LOG }
   | "indexed" { INDEXED }
+  | digit+ as i { DECLIT256 (WrapBn.big_int_of_string i) }
+  (* uint8 has at most three digits *)
+  | digit digit? digit? "u8" as i {
+      let last = String.length i - 2 in
+      DECLIT8 (WrapBn.big_int_of_string (String.sub i 0 last)) }
   | id  { IDENT (lexeme lexbuf) }
   | eof { EOF }
