@@ -32,6 +32,7 @@ type token =
   | LOG
   | LBRACE
   | LAND
+  | INTERFACE
   | INDEXED
   | IF
   | IDENT of (string)

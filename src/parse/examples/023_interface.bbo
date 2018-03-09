@@ -1,8 +1,7 @@
-interface B // arguments are missing because it's impossible to deploy
+interface B
 {
-    case(uint256 f(address)); // do we allow argument names?  probably not, because they don't change anything?
+    case(uint256 f(address));
 
-    // default case is always assumed to exist? no.
     default;
 }
 
