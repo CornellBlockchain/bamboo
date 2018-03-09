@@ -218,7 +218,7 @@ let push_signature_code (ce : CodegenEnv.t)
                         (case_signature : usual_case_header)
   =
   let hash = Ethereum.case_header_signature_hash case_signature in
-  let ce = append_instruction ce (PUSH4 (Big (Ethereum.hex_to_big_int hash))) in
+  let ce = append_instruction ce (PUSH4 (Big (WrapBn.hex_to_big_int hash))) in
   ce
 
 (** [prepare_functiohn_signature ce usual_header]
@@ -266,7 +266,6 @@ let increase_top ce (inc : int) =
  *  according to the ABI.  This increases the stack top element by the size of the
  *  new allocation. *)
 let rec add_constructor_argument_to_memory le (packing : memoryPacking) ce (arg : Syntax.typ exp) =
-  let () = Printf.printf "it's about appending type %s\n" (Syntax.string_of_typ (snd arg)) in
   let original_stack_size = stack_size ce in
   let typ = snd arg in
   let () = assert (Syntax.fits_in_one_storage_slot typ) in
@@ -541,7 +540,6 @@ and codegen_exp
       ((e,t) : Syntax.typ Syntax.exp) :
       CodegenEnv.t =
   let ret =
-  Syntax.
   (match e,t with
    | AddressExp ((c, ContractInstanceType _)as inner), AddressType ->
       let ce = codegen_exp le ce alignment inner in
@@ -590,15 +588,27 @@ and codegen_exp
       end
   | FalseExp,BoolType ->
      let ce = CodegenEnv.append_instruction
-                ce (Evm.PUSH1 (Big Big_int.zero_big_int)) in
+                ce (Evm.PUSH1 (Big WrapBn.zero_big_int)) in
      let () = assert (alignment = RightAligned) in
      ce
   | FalseExp, _ -> failwith "codegen_exp: FalseExp of unexpected type"
   | TrueExp,BoolType ->
-     let ce = append_instruction ce (PUSH1 (Big Big_int.unit_big_int)) in
+     let ce = append_instruction ce (PUSH1 (Big WrapBn.unit_big_int)) in
      let () = assert (alignment = RightAligned) in
      ce
   | TrueExp, _ -> failwith "codegen_exp: TrueExp of unexpected type"
+  | DecLit256Exp d, Uint256Type ->
+     let ce = append_instruction ce (PUSH32 (Big d)) in
+     let () = assert (alignment = RightAligned) in
+     ce
+  | DecLit256Exp d, _ ->
+      failwith ("codegen_exp: DecLit256Exp of unexpected type: "^(WrapBn.string_of_big_int d))
+  | DecLit8Exp d, Uint8Type ->
+     let ce = append_instruction ce (PUSH1 (Big d)) in
+     let () = assert (alignment = RightAligned) in
+     ce
+  | DecLit8Exp d, _ ->
+      failwith ("codegen_exp: DecLit8Exp of unexpected type: "^(WrapBn.string_of_big_int d))
   | LandExp (l, r), BoolType ->
      let shortcut_label = Label.new_label () in
      let () = assert (alignment = RightAligned) in
@@ -653,6 +663,11 @@ and codegen_exp
      let ce = codegen_exp le ce RightAligned l in
      let ce = append_instruction ce ADD in
      ce
+  | PlusExp (l, r), Uint8Type ->
+     let ce = codegen_exp le ce RightAligned r in
+     let ce = codegen_exp le ce RightAligned l in
+     let ce = append_instruction ce ADD in
+     ce
   | PlusExp (l, r), _ ->
      failwith "codegen_exp PlusExp of unexpected type"
   | MinusExp (l, r), Uint256Type ->
@@ -660,9 +675,19 @@ and codegen_exp
      let ce = codegen_exp le ce RightAligned l in
      let ce = append_instruction ce SUB in
      ce
+  | MinusExp (l, r), Uint8Type ->
+     let ce = codegen_exp le ce RightAligned r in
+     let ce = codegen_exp le ce RightAligned l in
+     let ce = append_instruction ce SUB in
+     ce
   | MinusExp (l, r), _ ->
      failwith "codegen_exp MinusExp of unexpected type"
   | MultExp (l, r), Uint256Type ->
+     let ce = codegen_exp le ce RightAligned r in
+     let ce = codegen_exp le ce RightAligned l in
+     let ce = append_instruction ce MUL in
+     ce
+  | MultExp (l, r), Uint8Type ->
      let ce = codegen_exp le ce RightAligned r in
      let ce = codegen_exp le ce RightAligned l in
      let ce = append_instruction ce MUL in
@@ -1292,7 +1317,7 @@ let add_dispatcher le ce contract_id contract =
   let () = assert (stack_size ce = original_stack_size + 1) in
   let case_signatures = List.map (fun x -> x.Syntax.case_header) contract.contract_cases in
 
-  let usual_case_headers = BatList.filter_map
+  let usual_case_headers = WrapList.filter_map
                              (fun h -> match h with DefaultCaseHeader -> None |
                                                     UsualCaseHeader u -> Some u
                              ) case_signatures in
@@ -1511,7 +1536,7 @@ let add_assignment le ce layout l r =
 
 let push_event_signature ce event =
   let hash = Ethereum.event_signature_hash event in
-  let ce = append_instruction ce (PUSH4 (Big (Ethereum.hex_to_big_int hash))) in
+  let ce = append_instruction ce (PUSH4 (Big (WrapBn.hex_to_big_int hash))) in
   ce
 
 let add_variable_init le ce layout i =
@@ -1597,7 +1622,7 @@ let add_case_argument_locations (le : LocationEnv.t) (case : Syntax.typ Syntax.c
 let calldatasize_of_usual_header us =
   let args = us.case_arguments in
   4 (* for signature *) +
-    try BatList.sum (List.map (fun x -> Ethereum.(interface_typ_size (interpret_interface_type x.arg_typ))) args) with
+    try WrapList.sum (List.map (fun x -> Ethereum.(interface_typ_size (interpret_interface_type x.arg_typ))) args) with
       Invalid_argument _ -> 0
 
 let add_case_argument_length_check ce case_header =
@@ -1678,7 +1703,7 @@ let calculate_offsets initial lst =
 let layout_info_from_runtime_compiled (rc : runtime_compiled) (constructors : constructor_compiled Assoc.contract_id_assoc) : LayoutInfo.runtime_layout_info =
   let sizes_of_constructors = sizes_of_constructors constructors in
   let offsets_of_constructors = calculate_offsets (CodegenEnv.code_length rc.runtime_codegen_env) sizes_of_constructors in
-  let sum_of_constructor_sizes = BatList.sum sizes_of_constructors in
+  let sum_of_constructor_sizes = WrapList.sum sizes_of_constructors in
   LayoutInfo.(
     { runtime_code_size = sum_of_constructor_sizes + CodegenEnv.code_length rc.runtime_codegen_env
     ; runtime_offset_of_contract_id = rc.runtime_contract_offsets
@@ -1701,7 +1726,7 @@ let constructors_packed layout (constructors : constructor_compiled Assoc.contra
 
 let compose_bytecode (constructors : constructor_compiled Assoc.contract_id_assoc)
                      (runtime : runtime_compiled) (cid : Assoc.contract_id)
-    : Big_int.big_int Evm.program =
+    : WrapBn.t Evm.program =
   let contracts_layout_info : (Assoc.contract_id * LayoutInfo.contract_layout_info) list =
     List.map (fun (id, const) -> (id, layout_info_from_constructor_compiled const)) constructors in
   let runtime_layout = layout_info_from_runtime_compiled runtime constructors in
@@ -1717,7 +1742,7 @@ let compose_bytecode (constructors : constructor_compiled Assoc.contract_id_asso
 
 let compose_runtime_bytecode (constructors : constructor_compiled Assoc.contract_id_assoc)
                      (runtime : runtime_compiled)
-    : Big_int.big_int Evm.program =
+    : WrapBn.t Evm.program =
   let contracts_layout_info : (Assoc.contract_id * LayoutInfo.contract_layout_info) list =
     List.map (fun (id, const) -> (id, layout_info_from_constructor_compiled const)) constructors in
   let runtime_layout = layout_info_from_runtime_compiled runtime constructors in
