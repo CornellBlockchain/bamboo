@@ -530,6 +530,9 @@ let assign_type_toplevel (interfaces : Contract.contract_interface Assoc.contrac
      Contract (assign_type_contract interfaces events c)
   | Event e ->
      Event e
+  | Interface i ->
+     Interface i
+
 
 (* XXX: these [strip_side_effects_X] should be generalized over any f : 'a -> 'b *)
 
@@ -658,6 +661,7 @@ let strip_side_effects (raw : (typ * 'a) Syntax.toplevel) : typ Syntax.toplevel 
   | Contract c ->
      Contract (strip_side_effects_contract c)
   | Event e -> Event e
+  | Interface i -> Interface i
 
 let has_distinct_contract_names (contracts : unit Syntax.contract Assoc.contract_id_assoc) : bool =
   let contract_names = (List.map (fun (_, b) -> b.Syntax.contract_name) contracts) in

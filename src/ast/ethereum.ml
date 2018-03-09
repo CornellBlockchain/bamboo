@@ -226,6 +226,7 @@ let print_toplevel_abi seen_constructor (t : Syntax.typ Syntax.toplevel) : strin
      print_contract_abi seen_constructor c
   | Syntax.Event e ->
      print_event_abi e
+  | Syntax.Interface i -> ""
 
 let print_abi (tops : Syntax.typ Syntax.toplevel Assoc.contract_id_assoc) : unit =
   let seen_constructor = ref false in
