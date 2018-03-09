@@ -197,7 +197,7 @@ sentence:
   | IF; LPAR; cond = exp; RPAR; bodyT = body; ELSE; bodyF = body { Syntax.IfThenElse (cond, bodyT, bodyF) }
   | IF; LPAR; cond = exp; RPAR; body = body { Syntax.IfThenOnly (cond, body) }
   | LOG; name = IDENT; lst = exp_list; SEMICOLON { Syntax.LogSentence (name, lst, None)}
-  | SELFDESTRUCT; e = exp; SEMICOLON { Syntax.SelfdestructSentence e }
+  | SELFDESTRUCT; LPAR; e = exp; RPAR; SEMICOLON{ Syntax.SelfdestructSentence e }
   ;
 
 %inline op:
