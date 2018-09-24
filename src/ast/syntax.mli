@@ -10,6 +10,7 @@ type typ =
   | MappingType of typ * typ
   | ContractArchType of string (* type of [bid(...)] where bid is a contract *)
   | ContractInstanceType of string (* type of [b] declared as [bid b] *)
+  | InterfaceInstanceType of string
 
 type arg =
   { arg_typ : typ

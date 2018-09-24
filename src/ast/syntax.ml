@@ -11,6 +11,7 @@ type typ =
   | MappingType of typ * typ
   | ContractArchType of string (* type of [bid(...)] where bid is a contract *)
   | ContractInstanceType of string (* type of [b] declared as [bid b] *)
+  | InterfaceInstanceType of string
 
 let rec string_of_typ t =
   match t with
@@ -23,6 +24,7 @@ let rec string_of_typ t =
   | MappingType (a, b) -> "mapping ("^string_of_typ a^" => "^string_of_typ b^")"
   | ContractArchType s -> "ContractArchType "^s
   | ContractInstanceType s -> "ContractInstanceType "^s
+  | InterfaceInstanceType s -> "InterfaceInstanceType"^s
   | ReferenceType _ -> "pointer to ..."
   | TupleType _ -> "tuple"
 
@@ -230,6 +232,7 @@ let is_mapping (typ : typ) =
   | TupleType _
   | ContractArchType _
   | ContractInstanceType _
+  | InterfaceInstanceType _
   | VoidType
     -> false
   | MappingType _ -> true
@@ -245,6 +248,7 @@ let fits_in_one_storage_slot (typ : typ) =
   | AddressType
   | BoolType
   | ContractInstanceType _
+  | InterfaceInstanceType _
   | MappingType _ -> true
   | ReferenceType _ -> false
   | TupleType _ -> false
@@ -263,6 +267,7 @@ let size_of_typ (* in bytes *) = function
   | MappingType _ -> failwith "size_of_typ MappingType" (* XXX: this is just 32 I think *)
   | ContractArchType x -> failwith ("size_of_typ ContractArchType: "^x)
   | ContractInstanceType _ -> 20 (* address as word *)
+  | InterfaceInstanceType _ -> 20 (* not really sure about this *)
   | VoidType -> failwith "size_of_typ VoidType should not be asked"
 
 let calldata_size_of_typ (typ : typ) =
