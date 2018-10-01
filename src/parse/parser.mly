@@ -216,9 +216,7 @@ typ:
     RARROW;
     value = typ;
     { Syntax.MappingType (key, value) }
-  (* error is here now, not exactly sure how to add InterfaceInstanceType in typ *)
-  | INTERFACE s { Syntax.InterfaceInstanceType s}
-  | s = IDENT { Syntax.ContractInstanceType s }
+  | s = IDENT { Syntax.GeneralInstanceType s }
   ;
 
 %inline body:

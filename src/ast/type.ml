@@ -1,8 +1,6 @@
 open Syntax
 
-
 let ident_lookup_type
-      (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
       (tenv : TypeEnv.type_env) id : (typ * SideEffect.t list) exp =
   match TypeEnv.lookup tenv id with
   | Some (typ, Some loc) -> (IdentifierExp id, (typ, [loc, SideEffect.Read]))
@@ -10,10 +8,13 @@ let ident_lookup_type
   | None -> failwith ("unknown identifier "^id)
   (* what should it return when it is a method name? *)
 
-let is_known_contract contract_interfaces name =
-  List.exists (fun (_, i) -> i.Contract.contract_interface_name = name) contract_interfaces
+let is_known_contract apis name =
+  List.exists (fun (_, i) -> (match i with 
+    | Contract.ContractAPI contract -> contract.contract_api_name = name
+    | Contract.InterfaceAPI interface -> interface.interface_api_name = name))
+    apis
 
-let rec is_known_type (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc) (t : typ) =
+let rec is_known_type (apis : Contract.api Assoc.contract_id_assoc) (t : typ) =
   Syntax.(
     match t with
     | Uint256Type -> true
@@ -22,39 +23,36 @@ let rec is_known_type (contract_interfaces : Contract.contract_interface Assoc.c
     | AddressType -> true
     | BoolType -> true
     | ReferenceType lst ->
-       List.for_all (is_known_type contract_interfaces) lst
+       List.for_all (is_known_type apis) lst
     | TupleType lst ->
-       List.for_all (is_known_type contract_interfaces) lst
+       List.for_all (is_known_type apis) lst
     | MappingType (a, b) ->
-       is_known_type contract_interfaces a && is_known_type contract_interfaces b
+       is_known_type apis a && is_known_type apis b
     | ContractArchType contract ->
-       is_known_contract contract_interfaces contract
-    | ContractInstanceType contract ->
-       is_known_contract contract_interfaces contract
-    | InterfaceInstanceType interface ->
-       (* is_known_interface? *)
-       is_known_contract contract_interfaces interface
+       is_known_contract apis contract
+    | GeneralInstanceType contract ->
+       is_known_contract apis contract
     | VoidType -> true
   )
 
-let arg_has_known_type contract_interfaces arg =
-  let ret = is_known_type contract_interfaces arg.arg_typ in
+let arg_has_known_type apis arg =
+  let ret = is_known_type apis arg.arg_typ in
   if not ret then Printf.eprintf "argument has an unknown type %s\n" (Syntax.string_of_typ arg.arg_typ);
   ret
 
-let ret_type_is_known contract_interfaces header =
-  List.for_all (is_known_type contract_interfaces) header.case_return_typ
+let ret_type_is_known apis header =
+  List.for_all (is_known_type apis) header.case_return_typ
 
-let assign_type_case_header contract_interfaces header =
+let assign_type_case_header apis header =
   match header with
   | UsualCaseHeader header ->
-     let () = assert (List.for_all (arg_has_known_type contract_interfaces) header.case_arguments) in
-     let () = assert (ret_type_is_known contract_interfaces header) in
+     let () = assert (List.for_all (arg_has_known_type apis) header.case_arguments) in
+     let () = assert (ret_type_is_known apis header) in
      UsualCaseHeader header
   | DefaultCaseHeader ->
      DefaultCaseHeader
 
-let call_arg_expectations (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc) mtd : typ list -> bool =
+let call_arg_expectations (apis : Contract.api Assoc.contract_id_assoc) mtd : typ list -> bool =
   match mtd with
   | "pre_ecdsarecover" ->
      (fun x -> x = [Bytes32Type; Uint8Type; Bytes32Type; Bytes32Type])
@@ -63,18 +61,22 @@ let call_arg_expectations (contract_interfaces : Contract.contract_interface Ass
   | "iszero" ->
      (fun x -> x = [Bytes32Type] || x = [Uint8Type] || x = [Uint256Type] || x = [BoolType] || x = [AddressType])
   | name ->
-     let cid = Assoc.lookup_id (fun c -> c.Contract.contract_interface_name = name) contract_interfaces in
-     let interface : Contract.contract_interface = Assoc.choose_contract cid contract_interfaces in
-     (fun x -> x = interface.Contract.contract_interface_args)
+     let cid = Assoc.lookup_id (fun c -> match c with 
+     | Contract.ContractAPI contract -> contract.contract_api_name = name
+     | Contract.InterfaceAPI interface -> interface.interface_api_name = name) apis in
+     let api : Contract.api = Assoc.choose_contract cid apis in
+     (fun x -> x = (match api with 
+                    | ContractAPI contract -> contract.contract_api_args
+                    | InterfaceAPI interface -> []))
 
 let type_check ((exp : typ), ((_,(t, _)) : (typ * 'a) exp)) =
   assert (exp = t)
 
-let check_args_match (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc) (args : (typ * 'x) exp list) (call_head : string option) =
+let check_args_match (apis : Contract.api Assoc.contract_id_assoc) (args : (typ * 'x) exp list) (call_head : string option) =
   let expectations : typ list -> bool =
     match call_head with
     | Some mtd ->
-       call_arg_expectations contract_interfaces mtd
+       call_arg_expectations apis mtd
     | None ->
        (fun x -> x = [])
   in
@@ -103,12 +105,12 @@ let has_no_side_effects (e : (typ * SideEffect.t list) exp) =
   snd (snd e) = []
 
 let rec assign_type_call
-      contract_interfaces
+      apis
       cname
       venv (src : unit function_call) : ((typ * SideEffect.t list) function_call * (typ * SideEffect.t list)) =
-  let args' = List.map (assign_type_exp contract_interfaces cname venv)
+  let args' = List.map (assign_type_exp apis cname venv)
                        src.call_args in
-  let () = check_args_match contract_interfaces args' (Some src.call_head) in
+  let () = check_args_match apis args' (Some src.call_head) in
   let args_side_effects : SideEffect.t list list = List.map (fun (_, (_, s)) -> s) args' in
   let () = check_only_one_side_effect args_side_effects in
   let side_effects = (SideEffect.External, SideEffect.Write) :: List.concat args_side_effects in
@@ -127,26 +129,26 @@ let rec assign_type_call
   ({ call_head = src.call_head
      ; call_args = args' },
    (ret_typ, side_effects))
-and assign_type_message_info contract_interfaces cname tenv
+and assign_type_message_info apis cname tenv
                              (orig : unit message_info) : (typ * SideEffect.t list) message_info =
-  let v' = WrapOption.map (assign_type_exp contract_interfaces cname tenv)
+  let v' = WrapOption.map (assign_type_exp apis cname tenv)
                             orig.message_value_info in
-  let block' = assign_type_sentences contract_interfaces cname tenv orig.message_reentrance_info in
+  let block' = assign_type_sentences apis cname tenv orig.message_reentrance_info in
   { message_value_info = v'
   ; message_reentrance_info = block'
   }
 and assign_type_exp
-      (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+      (apis : Contract.api Assoc.contract_id_assoc)
       (cname : string)
       (venv : TypeEnv.type_env) ((exp_inner, ()) : unit exp) : (typ * SideEffect.t list) exp =
   match exp_inner with
-  | ThisExp -> (ThisExp, (ContractInstanceType cname, []))
+  | ThisExp -> (ThisExp, (GeneralInstanceType cname, []))
   | TrueExp -> (TrueExp, (BoolType, []))
   | FalseExp -> (FalseExp, (BoolType, []))
   | SenderExp -> (SenderExp, (AddressType, []))
   | NowExp -> (NowExp, (Uint256Type, []))
   | FunctionCallExp c ->
-     let (c', typ) = assign_type_call contract_interfaces cname venv c in
+     let (c', typ) = assign_type_call apis cname venv c in
      (FunctionCallExp c', typ)
   | DecLit256Exp d -> (DecLit256Exp d, (Uint256Type, []))
   | DecLit8Exp d -> (DecLit8Exp d, (Uint8Type, []))
@@ -156,88 +158,88 @@ and assign_type_exp
      let () =
        if WrapString.starts_with s "pre_" then
          failwith "names that start with pre_ are reserved" in
-     ident_lookup_type contract_interfaces venv s
+     ident_lookup_type venv s
   | ParenthExp e ->
      (* omit the parenthesis at this place, the tree already contains the structure *)
-     assign_type_exp contract_interfaces cname venv e
+     assign_type_exp apis cname venv e
   | NewExp n ->
-     let (n', contract_name) = assign_type_new_exp contract_interfaces cname venv n in
+     let (n', contract_name) = assign_type_new_exp apis cname venv n in
      let () =
        if WrapString.starts_with contract_name "pre_" then
          failwith "names that start with pre_ are reserved" in
-     (NewExp n', (ContractInstanceType contract_name, [SideEffect.External, SideEffect.Write]))
+     (NewExp n', (GeneralInstanceType contract_name, [SideEffect.External, SideEffect.Write]))
   | LandExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
+     let l = assign_type_exp apis cname venv l in
      let () = type_check (BoolType, l) in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let r = assign_type_exp apis cname venv r in
      let () = type_check (BoolType, r) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      (LandExp (l, r), (BoolType, List.concat sides))
   | LtExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      let () = assert (fst (snd l) = fst (snd r)) in
      (LtExp (l, r), (BoolType, List.concat sides))
   | GtExp (l, r) ->
-     let l' = assign_type_exp contract_interfaces cname venv l in
-     let r' = assign_type_exp contract_interfaces cname venv r in
+     let l' = assign_type_exp apis cname venv l in
+     let r' = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l') = fst (snd r')) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l'; r']) in
      let () = check_only_one_side_effect sides in
      (GtExp (l', r'), (BoolType, List.concat sides))
   | NeqExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l) = fst (snd r)) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      (NeqExp (l, r), (BoolType, List.concat sides))
   | EqualityExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l) = fst (snd r)) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      (EqualityExp (l, r), (BoolType, List.concat sides))
   | PlusExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l) = fst (snd r)) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      (PlusExp (l, r), (fst (snd l), List.concat sides))
   | MinusExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l) = fst (snd r)) in
      let sides = (List.map (fun (_, (_, x)) -> x) [l; r]) in
      let () = check_only_one_side_effect sides in
      (MinusExp (l, r), (fst (snd l), List.concat sides))
   | MultExp (l, r) ->
-     let l = assign_type_exp contract_interfaces cname venv l in
-     let r = assign_type_exp contract_interfaces cname venv r in
+     let l = assign_type_exp apis cname venv l in
+     let r = assign_type_exp apis cname venv r in
      let () = assert (fst (snd l) = fst (snd r)) in
      (MultExp (l, r), snd l)
   | NotExp negated ->
-     let negated = assign_type_exp contract_interfaces cname venv negated in
+     let negated = assign_type_exp apis cname venv negated in
      let () = assert (fst (snd negated) = BoolType) in
      (NotExp negated, (BoolType, snd (snd negated)))
   | AddressExp inner ->
-     let inner' = assign_type_exp contract_interfaces cname venv inner in
+     let inner' = assign_type_exp apis cname venv inner in
      (AddressExp inner', (AddressType, snd (snd inner')))
   | BalanceExp inner ->
-     let inner = assign_type_exp contract_interfaces cname venv inner in
+     let inner = assign_type_exp apis cname venv inner in
      let () = assert (acceptable_as AddressType (fst (snd inner))) in
      let () = assert (snd (snd inner) = []) in
      (BalanceExp inner, (Uint256Type, [SideEffect.External, SideEffect.Read]))
   | ArrayAccessExp aa ->
-     let atyped = assign_type_exp contract_interfaces cname venv (read_array_access aa).array_access_array in
+     let atyped = assign_type_exp apis cname venv (read_array_access aa).array_access_array in
      begin match fst (snd atyped) with
      | MappingType (key_type, value_type) ->
-        let (idx', (idx_typ', idx_side')) = assign_type_exp contract_interfaces cname venv (read_array_access aa).array_access_index in
+        let (idx', (idx_typ', idx_side')) = assign_type_exp apis cname venv (read_array_access aa).array_access_index in
         let () = assert (acceptable_as key_type idx_typ') in
         let () = assert (List.for_all (fun x -> x = (SideEffect.Storage, SideEffect.Read)) idx_side') in
         (* TODO Check idx_typ' and key_type are somehow compatible *)
@@ -248,21 +250,21 @@ and assign_type_exp
      | _ -> failwith "index access has to be on mappings"
      end
   | SendExp send ->
-     let msg_info' = assign_type_message_info contract_interfaces cname venv
+     let msg_info' = assign_type_message_info apis cname venv
                                            send.send_msg_info in
-     let contract' = assign_type_exp contract_interfaces cname venv send.send_head_contract in
+     let contract' = assign_type_exp apis cname venv send.send_head_contract in
      begin match send.send_head_method with
      | Some mtd ->
         let contract_name = Syntax.contract_name_of_instance contract' in
         let method_sig : Ethereum.function_signature = begin
             match Contract.find_method_signature
-                    contract_interfaces contract_name mtd with
+                    apis contract_name mtd with
             | Some x -> x
             | None -> failwith ("method "^mtd^" not found")
           end
         in
         let types = Ethereum.(List.map to_typ (method_sig.sig_return)) in
-        let args = List.map (assign_type_exp contract_interfaces cname venv)
+        let args = List.map (assign_type_exp apis cname venv)
                                      send.send_args in
         let () = assert (List.for_all has_no_side_effects args) in
         let reference : (Syntax.typ * SideEffect.t list) exp =
@@ -292,13 +294,13 @@ and assign_type_exp
   | TupleDereferenceExp _ ->
      failwith "DereferenceExp not supposed to appear in the raw tree for now"
 and assign_type_new_exp
-      contract_interfaces
+      apis
       (cname : string)
       (tenv : TypeEnv.type_env)
       (e : unit new_exp) : ((typ * SideEffect.t list) new_exp * string (* name of the contract just created *)) =
-  let msg_info' = assign_type_message_info contract_interfaces
+  let msg_info' = assign_type_message_info apis
                                            cname tenv e.new_msg_info in
-  let args' = List.map (assign_type_exp contract_interfaces cname tenv) e.new_args in
+  let args' = List.map (assign_type_exp apis cname tenv) e.new_args in
   let e' =
     { new_head = e.new_head
     ; new_args = args'
@@ -309,16 +311,16 @@ and assign_type_new_exp
    e.new_head
   )
 and assign_type_lexp
-      contract_interfaces
+      apis
       (cname : string)
       venv (src : unit lexp) : (typ * SideEffect.t list) lexp =
   (* no need to type the left hand side? *)
   match src with
   | ArrayAccessLExp aa ->
-     let atyped = assign_type_exp contract_interfaces cname venv aa.array_access_array in
+     let atyped = assign_type_exp apis cname venv aa.array_access_array in
      begin match fst (snd atyped) with
      | MappingType (key_type, value_type) ->
-        let (idx', idx_typ') = assign_type_exp contract_interfaces
+        let (idx', idx_typ') = assign_type_exp apis
                                                cname venv
                                                aa.array_access_index in
         (* TODO Check idx_typ' and key_type are somehow compatible *)
@@ -328,30 +330,30 @@ and assign_type_lexp
      | _ -> failwith ("unknown array")
      end
 and assign_type_return
-      (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+      (apis : Contract.api Assoc.contract_id_assoc)
       (cname : string)
       (tenv : TypeEnv.type_env)
       (src : unit return) : (typ * SideEffect.t list) return =
-  let exps = WrapOption.map (assign_type_exp contract_interfaces
+  let exps = WrapOption.map (assign_type_exp apis
                                    cname tenv) src.return_exp in
   let f = TypeEnv.lookup_expected_returns tenv in
   let () = assert (f (WrapOption.map (fun x -> (fst (snd x))) exps)) in
   { return_exp = exps
-  ; return_cont =  assign_type_exp contract_interfaces
+  ; return_cont =  assign_type_exp apis
                                    cname tenv src.return_cont
   }
 and type_variable_init
-      contract_interfaces cname tenv (vi : unit variable_init) :
+      apis cname tenv (vi : unit variable_init) :
       ((typ * SideEffect.t list) variable_init * TypeEnv.type_env) =
   (* This function has to enlarge the type environment *)
-  let value' = assign_type_exp contract_interfaces
+  let value' = assign_type_exp apis
                                cname tenv vi.variable_init_value in
   let added_name = vi.variable_init_name in
   let () =
     if WrapString.starts_with added_name "pre_" then
       failwith "names that start with pre_ are reserved" in
   let added_typ = vi.variable_init_type in
-  let () = assert (is_known_type contract_interfaces added_typ) in
+  let () = assert (is_known_type apis added_typ) in
   let new_env = TypeEnv.add_pair tenv added_name added_typ None in
   let new_init =
     { variable_init_type = added_typ
@@ -360,7 +362,7 @@ and type_variable_init
     } in
   (new_init, new_env)
 and assign_type_sentence
-      (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+      (apis : Contract.api Assoc.contract_id_assoc)
       (cname : string)
       (venv : TypeEnv.type_env)
       (src : unit sentence) :
@@ -369,36 +371,36 @@ and assign_type_sentence
   | AbortSentence -> (AbortSentence, venv)
   | ReturnSentence r ->
      let r' =
-       assign_type_return contract_interfaces cname venv r in
+       assign_type_return apis cname venv r in
      (ReturnSentence r', venv)
   | AssignmentSentence (l, r) ->
-     let l' = assign_type_lexp contract_interfaces cname venv l in
-     let r' = assign_type_exp contract_interfaces cname venv r in
+     let l' = assign_type_lexp apis cname venv l in
+     let r' = assign_type_exp apis cname venv r in
      (AssignmentSentence (l', r'), venv)
   | IfThenOnly (cond, ss) ->
-     let cond' = assign_type_exp contract_interfaces cname venv cond in
+     let cond' = assign_type_exp apis cname venv cond in
      let ss'
        = assign_type_sentences
-           contract_interfaces cname venv ss in
+           apis cname venv ss in
      (IfThenOnly (cond', ss'), venv)
   | IfThenElse (cond, sst, ssf) ->
-     let cond' = assign_type_exp contract_interfaces cname venv cond in
-     let sst' = assign_type_sentences contract_interfaces cname venv sst in
-     let ssf' = assign_type_sentences contract_interfaces cname venv ssf in
+     let cond' = assign_type_exp apis cname venv cond in
+     let sst' = assign_type_sentences apis cname venv sst in
+     let ssf' = assign_type_sentences apis cname venv ssf in
      (IfThenElse (cond', sst', ssf'), venv)
   | SelfdestructSentence e ->
-     let e' = assign_type_exp contract_interfaces cname venv e in
+     let e' = assign_type_exp apis cname venv e in
      (SelfdestructSentence e', venv)
   | VariableInitSentence vi ->
-     let (vi', venv') =  type_variable_init contract_interfaces cname venv vi in
+     let (vi', venv') =  type_variable_init apis cname venv vi in
      (VariableInitSentence vi', venv')
   | ExpSentence exp ->
-     let exp = assign_type_exp contract_interfaces cname venv exp in
+     let exp = assign_type_exp apis cname venv exp in
      let () = assert (fst (snd exp) = VoidType) in
      let () = assert (List.exists (fun (_, x) -> x = SideEffect.Write) (snd (snd exp))) in
      (ExpSentence exp, venv)
   | LogSentence (name, args, _) ->
-     let args = List.map (assign_type_exp contract_interfaces cname venv) args in
+     let args = List.map (assign_type_exp apis cname venv) args in
      let event = TypeEnv.lookup_event venv name in
      let type_expectations =
        List.map (fun ea -> Syntax.(ea.event_arg_body.arg_typ)) event.Syntax.event_arguments in
@@ -408,7 +410,7 @@ and assign_type_sentence
      (LogSentence (name, args, Some event), venv)
 
 and assign_type_sentences
-          (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+          (apis : Contract.api Assoc.contract_id_assoc)
           (cname : string)
           (type_environment : TypeEnv.type_env)
           (ss : unit sentence list) : (typ * SideEffect.t list) sentence list =
@@ -417,8 +419,8 @@ and assign_type_sentences
   | first_s :: rest_ss ->
      let (first_s', (updated_environment : TypeEnv.type_env)) =
        assign_type_sentence
-         contract_interfaces cname type_environment first_s in
-     first_s' :: assign_type_sentences contract_interfaces
+         apis cname type_environment first_s in
+     first_s' :: assign_type_sentences apis
                                        cname
                                        updated_environment
                                        rest_ss
@@ -466,7 +468,7 @@ let return_expectation_of_case (h : Syntax.case_header) (actual : Syntax.typ opt
      | _, _ ->false
      end
 
-let assign_type_case (contract_interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+let assign_type_case (apis : Contract.api Assoc.contract_id_assoc)
                      (contract_name : string)
                      (venv : TypeEnv.type_env)
                      (case : unit case) =
@@ -486,9 +488,9 @@ let assign_type_case (contract_interfaces : Contract.contract_interface Assoc.co
     if List.exists (fun arg -> WrapString.starts_with arg.arg_ident "pre_") case_arguments then
       failwith "names that start with pre_ are reserved" in
   let returns : Syntax.typ option -> bool = return_expectation_of_case case.case_header in
-  { case_header = assign_type_case_header contract_interfaces case.case_header
+  { case_header = assign_type_case_header apis case.case_header
   ; case_body = assign_type_sentences
-                  contract_interfaces
+                  apis
                   contract_name
                   (TypeEnv.remember_expected_returns (TypeEnv.add_block case_arguments venv) returns)
                   case.case_body
@@ -505,7 +507,7 @@ let has_distinct_signatures (c : unit Syntax.contract) : bool =
   List.length signatures = List.length unique_sig
 
 
-let assign_type_contract (env : Contract.contract_interface Assoc.contract_id_assoc)
+let assign_type_contract (env : Contract.api Assoc.contract_id_assoc)
                          (events: event Assoc.contract_id_assoc)
       (raw : unit Syntax.contract) :
       (Syntax.typ * SideEffect.t list) Syntax.contract =
@@ -524,7 +526,7 @@ let assign_type_contract (env : Contract.contract_interface Assoc.contract_id_as
       List.map (assign_type_case env raw.contract_name tenv) raw.contract_cases
   }
 
-let assign_type_toplevel (interfaces : Contract.contract_interface Assoc.contract_id_assoc)
+let assign_type_toplevel (interfaces : Contract.api Assoc.contract_id_assoc)
                          (events : event Assoc.contract_id_assoc)
                          (raw : unit Syntax.toplevel) :
       (Syntax.typ * SideEffect.t list) Syntax.toplevel =
@@ -666,20 +668,27 @@ let strip_side_effects (raw : (typ * 'a) Syntax.toplevel) : typ Syntax.toplevel 
   | Event e -> Event e
   | Interface i -> Interface i
 
-let has_distinct_contract_names (contracts : unit Syntax.contract Assoc.contract_id_assoc) : bool =
-  let contract_names = (List.map (fun (_, b) -> b.Syntax.contract_name) contracts) in
-  List.length contracts = List.length (WrapList.unique contract_names)
+let has_distinct_names (raw : unit Syntax.toplevel Assoc.contract_id_assoc) : bool =
+  let names = (List.map (fun (_, b) -> 
+    match b with 
+    | Contract c -> c.contract_name
+    | Interface i -> i.interface_name
+    | Event e -> "") raw) in
+  List.length raw = List.length (WrapList.unique names)
+  (* can interfaces and contracts have the same names? 
+     Also, the output of the pattern matching on Event should never matter. *)
 
 let assign_types (raw : unit Syntax.toplevel Assoc.contract_id_assoc) :
       Syntax.typ Syntax.toplevel Assoc.contract_id_assoc =
-  let raw_contracts : unit Syntax.contract Assoc.contract_id_assoc =
+  let raw_contracts : unit Syntax.toplevel Assoc.contract_id_assoc =
     Assoc.filter_map (fun x ->
                           match x with
-                          | Contract c -> Some c
+                          | Contract c -> Some x
+                          | Interface i -> Some x
                           | _ -> None
                         ) raw in
-  let () = assert(has_distinct_contract_names(raw_contracts)) in
-  let interfaces = Assoc.map Contract.contract_interface_of raw_contracts in
+  let () = assert(has_distinct_names(raw_contracts)) in
+  let interfaces = Assoc.map Contract.api_of raw_contracts in
   let events : event Assoc.contract_id_assoc =
     Assoc.filter_map (fun x ->
         match x with

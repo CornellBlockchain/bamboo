@@ -10,8 +10,7 @@ type typ =
   | TupleType of typ list
   | MappingType of typ * typ
   | ContractArchType of string (* type of [bid(...)] where bid is a contract *)
-  | ContractInstanceType of string (* type of [b] declared as [bid b] *)
-  | InterfaceInstanceType of string
+  | GeneralInstanceType of string (* type of [b] declared as [bid b] *)
 
 let rec string_of_typ t =
   match t with
@@ -23,8 +22,7 @@ let rec string_of_typ t =
   | BoolType -> "bool"
   | MappingType (a, b) -> "mapping ("^string_of_typ a^" => "^string_of_typ b^")"
   | ContractArchType s -> "ContractArchType "^s
-  | ContractInstanceType s -> "ContractInstanceType "^s
-  | InterfaceInstanceType s -> "InterfaceInstanceType"^s
+  | GeneralInstanceType s -> "GeneralInstanceType "^s
   | ReferenceType _ -> "pointer to ..."
   | TupleType _ -> "tuple"
 
@@ -187,7 +185,7 @@ let case_header_arg_list (c : case_header) : arg list =
 
 let contract_name_of_instance ((_, (t, _)) : (typ * 'a) exp) =
   match t with
-  | ContractInstanceType s -> s
+  | GeneralInstanceType s -> s
   | typ -> failwith
              ("seeking contract_name_of non-contract "^(string_of_typ typ))
 
@@ -231,8 +229,7 @@ let is_mapping (typ : typ) =
   | ReferenceType _
   | TupleType _
   | ContractArchType _
-  | ContractInstanceType _
-  | InterfaceInstanceType _
+  | GeneralInstanceType _
   | VoidType
     -> false
   | MappingType _ -> true
@@ -247,8 +244,7 @@ let fits_in_one_storage_slot (typ : typ) =
   | Bytes32Type
   | AddressType
   | BoolType
-  | ContractInstanceType _
-  | InterfaceInstanceType _
+  | GeneralInstanceType _
   | MappingType _ -> true
   | ReferenceType _ -> false
   | TupleType _ -> false
@@ -266,8 +262,7 @@ let size_of_typ (* in bytes *) = function
      failwith "size_of_typ Tuple"
   | MappingType _ -> failwith "size_of_typ MappingType" (* XXX: this is just 32 I think *)
   | ContractArchType x -> failwith ("size_of_typ ContractArchType: "^x)
-  | ContractInstanceType _ -> 20 (* address as word *)
-  | InterfaceInstanceType _ -> 20 (* not really sure about this *)
+  | GeneralInstanceType _ -> 20 (* address as word *)
   | VoidType -> failwith "size_of_typ VoidType should not be asked"
 
 let calldata_size_of_typ (typ : typ) =
@@ -457,5 +452,5 @@ let size_of_typs (typs : typ list) =
 let acceptable_as t0 t1 =
   (t0 = t1) ||
     match t0, t1 with
-    | AddressType, ContractInstanceType _ -> true
+    | AddressType, GeneralInstanceType _ -> true
     | _, _ -> false

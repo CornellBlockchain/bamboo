@@ -19,7 +19,7 @@ val codegen_sentence :
 
 type constructor_compiled =
   { constructor_codegen_env : CodegenEnv.t
-  ; constructor_interface : Contract.contract_interface
+  ; constructor_interface : Contract.contract_api
   ; constructor_contract : Syntax.typ Syntax.contract
   }
 

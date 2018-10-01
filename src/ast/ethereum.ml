@@ -20,7 +20,7 @@ let interpret_interface_type (str : Syntax.typ) : interface_typ =
   | BoolType -> InterfaceBool
   | TupleType _ -> failwith "interpret_interface_type: tuple types are not supported yet"
   | MappingType (_, _) -> failwith "interpret_interface_type: mapping type not supported"
-  | ContractInstanceType _ -> InterfaceAddress
+  | GeneralInstanceType _ -> InterfaceAddress
   | ContractArchType _ -> failwith "contract arch-type does not appear in the ABI"
   | ReferenceType _ -> failwith "reference type does not appear in the ABI"
   | VoidType -> failwith "VoidType should not appear in the ABI"

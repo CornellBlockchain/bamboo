@@ -541,7 +541,7 @@ and codegen_exp
       CodegenEnv.t =
   let ret =
   (match e,t with
-   | AddressExp ((c, ContractInstanceType _)as inner), AddressType ->
+   | AddressExp ((c, GeneralInstanceType _)as inner), AddressType ->
       let ce = codegen_exp le ce alignment inner in
       (* c is a contract instance.
        * The concrete representation of a contact instance is
@@ -718,7 +718,7 @@ and codegen_exp
   | SendExp s, _ ->
      let () = assert (alignment = RightAligned) in
      codegen_send_exp le ce s
-  | NewExp new_e, ContractInstanceType ctyp ->
+  | NewExp new_e, GeneralInstanceType ctyp ->
      let () = assert (alignment = RightAligned) in
      codegen_new_exp le ce new_e ctyp
   | NewExp new_e, _ ->
@@ -821,7 +821,7 @@ and codegen_send_exp le ce (s : Syntax.typ Syntax.send_exp) =
   let original_stack_size = stack_size ce in
   let head_contract = s.send_head_contract in
   match snd head_contract with
-  | ContractInstanceType contract_name ->
+  | GeneralInstanceType contract_name ->
      let callee_contract_id =
        try CodegenEnv.cid_lookup ce contract_name
        with Not_found ->
@@ -1225,7 +1225,7 @@ let codegen_constructor_bytecode
 
 type constructor_compiled =
   { constructor_codegen_env : CodegenEnv.t
-  ; constructor_interface : Contract.contract_interface
+  ; constructor_interface : Contract.contract_api
   ; constructor_contract : Syntax.typ Syntax.contract
   }
 
@@ -1245,7 +1245,7 @@ let empty_runtime_compiled cid_lookup layouts =
 
 let compile_constructor ((lst, cid) : (Syntax.typ Syntax.contract Assoc.contract_id_assoc * Assoc.contract_id)) : constructor_compiled =
   { constructor_codegen_env = codegen_constructor_bytecode (lst, cid)
-  ; constructor_interface = Contract.contract_interface_of (List.assoc cid lst)
+  ; constructor_interface = Contract.contract_api_of (List.assoc cid lst)
   ; constructor_contract = List.assoc cid lst
   }
 

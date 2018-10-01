@@ -9,8 +9,7 @@ type typ =
   | TupleType of typ list
   | MappingType of typ * typ
   | ContractArchType of string (* type of [bid(...)] where bid is a contract *)
-  | ContractInstanceType of string (* type of [b] declared as [bid b] *)
-  | InterfaceInstanceType of string
+  | GeneralInstanceType of string (* type of [b] declared as [bid b] *)
 
 type arg =
   { arg_typ : typ
