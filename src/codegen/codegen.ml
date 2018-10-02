@@ -1308,14 +1308,21 @@ let add_throw ce =
   let ce = append_instruction ce JUMP in
   ce
 
-let add_dispatcher le ce contract_id contract =
+let add_dispatcher le ce contract_id toplevel =
   let original_stack_size = stack_size ce in
 
   (* load the first four bytes of the input data *)
   let ce = push_word_from_input_data_at_byte ce (Int 0) in
   let ce = stack_top_shift_right ce Ethereum.(word_bits - signature_bits) in
   let () = assert (stack_size ce = original_stack_size + 1) in
-  let case_signatures = List.map (fun x -> x.Syntax.case_header) contract.contract_cases in
+  let case_signatures = (match toplevel with
+  (* Expects 'a Syntax.case list, but this is Syntax.case list?*)
+  | Contract c -> List.map (fun x -> x.Syntax.case_header) c.contract_cases
+  | Interface i -> List.map (fun x -> x.Syntax.case_header) i.interface_cases
+  (* What to do about events? *)
+  | Event e -> raise (Failure "Event not allowed"))
+  in
+    
 
   let usual_case_headers = WrapList.filter_map
                              (fun h -> match h with DefaultCaseHeader -> None |
@@ -1650,7 +1657,7 @@ let add_case (le : LocationEnv.t) (ce : CodegenEnv.t) layout (cid : Assoc.contra
 
 let codegen_append_contract_bytecode
       le ce layout
-      ((cid, contract) : Assoc.contract_id * Syntax.typ Syntax.contract) =
+      ((cid, contract) : Assoc.contract_id * 'exp Syntax.toplevel) =
   (* jump destination for the contract *)
   let entry_label = Label.new_label () in
   let ce = append_instruction ce (JUMPDEST entry_label) in
@@ -1659,9 +1666,10 @@ let codegen_append_contract_bytecode
                                  (Contract cid) entry_label) in
 
   let ce = initialize_memory_allocator ce in
-
+  
   (* add jumps to the cases *)
-  let (le, ce) = add_dispatcher le ce cid contract in
+  let (le , ce) = add_dispatcher le ce cid contract
+  in
 
   (* add the cases *)
   let cases = contract.Syntax.contract_cases in
