@@ -3,38 +3,24 @@ exception NoInterfaceFor of string (* for handling exhaustive pattern matching o
 
 type case_interface = Ethereum.function_signature
 
+let case_interface_of_header (raw : Syntax.case_header) : case_interface = 
+  match raw with 
+  | Syntax.UsualCaseHeader header ->
+    {Ethereum.sig_return = 
+        List.map Ethereum.interpret_interface_type Syntax.(header.case_return_typ)
+      ; sig_name = Syntax.(header.case_name)
+      ; sig_args = List.map Ethereum.interpret_interface_type
+                  Syntax.(List.map (fun x -> x.arg_typ) header.case_arguments)
+    }
+  | Syntax.DefaultCaseHeader ->
+    { Ethereum.sig_return = []
+      ; sig_name = "" (* is this a good choice? *)
+      ; sig_args = []
+    }
+
 let case_interface_of (raw : 'exp Syntax.case) : case_interface =
-  match Syntax.(raw.case_header) with
-    | Syntax.UsualCaseHeader header ->
-       {Ethereum.sig_return = 
-           List.map Ethereum.interpret_interface_type Syntax.(header.case_return_typ)
-       ; sig_name = Syntax.(header.case_name)
-       ; sig_args =
-           List.map Ethereum.interpret_interface_type
-                     Syntax.(List.map (fun x -> x.arg_typ) header.case_arguments)
-       }
-  | Syntax.DefaultCaseHeader ->
-     { Ethereum.sig_return = []
-     ; sig_name = "" (* is this a good choice? *)
-     ; sig_args = []
-     }
-  
-  let case_interface_of_header (raw : Syntax.case_header) : case_interface = 
-    match raw with 
-    | Syntax.UsualCaseHeader header ->
-       {Ethereum.sig_return = 
-           List.map Ethereum.interpret_interface_type Syntax.(header.case_return_typ)
-       ; sig_name = Syntax.(header.case_name)
-       ; sig_args =
-           List.map Ethereum.interpret_interface_type
-                     Syntax.(List.map (fun x -> x.arg_typ) header.case_arguments)
-       }
-  | Syntax.DefaultCaseHeader ->
-     { Ethereum.sig_return = []
-     ; sig_name = "" (* is this a good choice? *)
-     ; sig_args = []
-     }
-  
+  case_interface_of_header raw.case_header
+
 type contract_api =
   { contract_api_name : string
     (** [contract_api_name] is the name of the contract. *)
