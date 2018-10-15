@@ -48,6 +48,10 @@ let () =
                       match x with
                       | Contract c -> Some c
                       | _ -> None) toplevels in
+  let interfaces = Assoc.filter_map (fun x ->
+                      match x with
+                      | Interface i -> Some i
+                      | _ -> None) toplevels in
   let () = match contracts with
   | [] -> ()
   | _ ->

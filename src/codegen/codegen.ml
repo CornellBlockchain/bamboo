@@ -1318,7 +1318,7 @@ let add_dispatcher le ce contract_id toplevel =
   let case_signatures = (match toplevel with
   (* Expects 'a Syntax.case list, but this is Syntax.case list?*)
   | Contract c -> List.map (fun x -> x.Syntax.case_header) c.contract_cases
-  | Interface i -> List.map (fun x -> x.Syntax.case_header) i.interface_cases
+  | Interface i -> i.interface_cases
   (* What to do about events? *)
   | Event e -> raise (Failure "Event not allowed"))
   in
