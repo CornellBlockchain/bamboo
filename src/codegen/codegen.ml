@@ -1308,21 +1308,16 @@ let add_throw ce =
   let ce = append_instruction ce JUMP in
   ce
 
-let add_dispatcher le ce contract_id toplevel =
+let add_dispatcher le ce contract_id contract =
   let original_stack_size = stack_size ce in
 
   (* load the first four bytes of the input data *)
   let ce = push_word_from_input_data_at_byte ce (Int 0) in
   let ce = stack_top_shift_right ce Ethereum.(word_bits - signature_bits) in
   let () = assert (stack_size ce = original_stack_size + 1) in
-  let case_signatures = (match toplevel with
-  (* Expects 'a Syntax.case list, but this is Syntax.case list?*)
-  | Contract c -> List.map (fun x -> x.Syntax.case_header) c.contract_cases
-  | Interface i -> i.interface_cases
-  (* What to do about events? *)
-  | Event e -> raise (Failure "Event not allowed"))
+  let case_signatures = List.map (fun x -> x.Syntax.case_header) contract.contract_cases
   in
-    
+
 
   let usual_case_headers = WrapList.filter_map
                              (fun h -> match h with DefaultCaseHeader -> None |
@@ -1644,7 +1639,7 @@ let add_case_argument_length_check ce case_header =
      let ce = append_instruction ce JUMPI in
      ce
 
-let add_case (le : LocationEnv.t) (ce : CodegenEnv.t) layout (cid : Assoc.contract_id) (case : Syntax.typ Syntax.case) =
+let add_case (le : LocationEnv.t) (ce : CodegenEnv.t) layout interfaces (cid : Assoc.contract_id) (case : Syntax.typ Syntax.case) =
   let ce = add_case_destination ce cid case.case_header in
   let ce = add_case_argument_length_check ce case.case_header in
   let le = LocationEnv.add_empty_block le in
@@ -1656,8 +1651,8 @@ let add_case (le : LocationEnv.t) (ce : CodegenEnv.t) layout (cid : Assoc.contra
   (le, ce)
 
 let codegen_append_contract_bytecode
-      le ce layout
-      ((cid, contract) : Assoc.contract_id * 'exp Syntax.toplevel) =
+      le ce layout interfaces
+      ((cid, contract) : Assoc.contract_id * Syntax.typ Syntax.contract) =
   (* jump destination for the contract *)
   let entry_label = Label.new_label () in
   let ce = append_instruction ce (JUMPDEST entry_label) in
@@ -1666,7 +1661,7 @@ let codegen_append_contract_bytecode
                                  (Contract cid) entry_label) in
 
   let ce = initialize_memory_allocator ce in
-  
+
   (* add jumps to the cases *)
   let (le , ce) = add_dispatcher le ce cid contract
   in
@@ -1674,21 +1669,21 @@ let codegen_append_contract_bytecode
   (* add the cases *)
   let cases = contract.Syntax.contract_cases in
   let (le, ce) = List.fold_left
-                   (fun (le,ce) case -> add_case le ce layout cid case)
+                   (fun (le,ce) case -> add_case le ce layout interfaces cid case)
                    (le, ce) cases in
 
   ce
 
-let append_runtime layout (prev : runtime_compiled)
+let append_runtime layout interfaces (prev : runtime_compiled)
                    ((cid : Assoc.contract_id), (contract : Syntax.typ Syntax.contract))
                    : runtime_compiled =
-  { runtime_codegen_env = codegen_append_contract_bytecode (LocationEnv.runtime_initial_env contract) prev.runtime_codegen_env layout (cid, contract)
+  { runtime_codegen_env = codegen_append_contract_bytecode (LocationEnv.runtime_initial_env contract) prev.runtime_codegen_env layout interfaces (cid, contract)
   ; runtime_contract_offsets = Assoc.insert cid (CodegenEnv.code_length prev.runtime_codegen_env) prev.runtime_contract_offsets
   }
 
-let compile_runtime layout (contracts : Syntax.typ Syntax.contract Assoc.contract_id_assoc)
+let compile_runtime layout interfaces (contracts : Syntax.typ Syntax.contract Assoc.contract_id_assoc)
     : runtime_compiled =
-  List.fold_left (append_runtime layout) (initial_runtime_compiled (cid_lookup_in_assoc contracts) contracts) contracts
+  List.fold_left (append_runtime layout interfaces) (initial_runtime_compiled (cid_lookup_in_assoc contracts) contracts) contracts
 
 let layout_info_from_constructor_compiled (cc : constructor_compiled) : LayoutInfo.contract_layout_info =
   LayoutInfo.layout_info_of_contract cc.constructor_contract (CodegenEnv.ce_program cc.constructor_codegen_env)

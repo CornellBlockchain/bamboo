@@ -59,7 +59,7 @@ let () =
      let contracts_layout_info : (Assoc.contract_id * LayoutInfo.contract_layout_info) list =
        List.map (fun (id, const) -> (id, layout_info_from_constructor_compiled const)) constructors in
      let layout = LayoutInfo.construct_layout_info contracts_layout_info in
-     let runtime_compiled = compile_runtime layout contracts in
+     let runtime_compiled = compile_runtime layout interfaces contracts in
      let bytecode : WrapBn.t Evm.program =
        compose_bytecode constructors runtime_compiled (fst (List.hd contracts)) in
      let () =
