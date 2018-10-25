@@ -6,6 +6,7 @@ type alignment = LeftAligned | RightAligned
 val codegen_exp :
   LocationEnv.t ->
   CodegenEnv.t ->
+  ?interfaces:'a list ->
   alignment ->
   Syntax.typ Syntax.exp ->
   CodegenEnv.t

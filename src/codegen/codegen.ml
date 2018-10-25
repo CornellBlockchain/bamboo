@@ -536,6 +536,7 @@ and setup_array_seed_at_location le ce loc =
 and codegen_exp
       (le : LocationEnv.t)
       (ce : CodegenEnv.t)
+      ?(interfaces=[])
       (alignment : alignment)
       ((e,t) : Syntax.typ Syntax.exp) :
       CodegenEnv.t =
