@@ -454,6 +454,50 @@ let acceptable_as t0 t1 =
     | _, _ -> false
 
 
+(*
+let lookup_usual_case_in_single_interface i case_name =
+  let cases = i.interface_cases in
+  let cases = List.filter (fun c -> match c with
+                                     | DefaultCaseHeader -> false
+                                     | UsualCaseHeader uc ->
+                                        uc.case_name = case_name) cases in
+  let () = if (List.length cases = 0) then
+             raise Not_found
+           else if (List.length cases > 1) then
+             let () = Printf.eprintf "case %s duplicated\n%!" case_name in
+             failwith "case_lookup"
+  in
+  match cases with
+  | [] -> raise Not_found
+  | _ :: _ :: _ -> failwith "should not happen"
+  | [a] ->
+     begin match a with
+     | UsualCaseHeader uc -> uc
+     | DefaultCaseHeader -> failwith "lookup_usual_case_in_single_interface: default case found"
+     end
+
+let rec lookup_interface_usual_case_header_inner (already_seen : interface list)
+                                   (i : interface)
+                                   (case_name : string) f : usual_case_header =
+  if List.mem i already_seen then
+    raise Not_found
+  else
+    try
+      lookup_usual_case_in_single_interface i case_name
+    with Not_found ->
+         let already_seen = i :: already_seen in
+         let becomes = List.map f (might_become i) in     (* issue is here*)
+         let rec try_becomes bs already_seen =
+           (match bs with
+            | [] -> raise Not_found
+            | h :: tl ->
+               (try
+                  lookup_interface_usual_case_header_inner already_seen h case_name f
+                with Not_found ->
+                     let already_seen = h :: already_seen in
+                     try_becomes tl already_seen)) in
+          try_becomes becomes already_seen                (* and also here *)
+*)
 
 let lookup_usual_case_in_single_interface i case_name =
   let cases = i.interface_cases in
@@ -476,27 +520,13 @@ let lookup_usual_case_in_single_interface i case_name =
      | DefaultCaseHeader -> failwith "lookup_usual_case_in_single_interface: default case found"
      end
 
-let rec lookup_interface_usual_case_header_inner (already_seen : typ interface list)
-                                   (i : typ interface)
+let rec lookup_interface_usual_case_header_inner (already_seen : interface list)
+                                   (i : interface)
                                    (case_name : string) f : usual_case_header =
   if List.mem i already_seen then
     raise Not_found
   else
-    try
       lookup_usual_case_in_single_interface i case_name
-    with Not_found ->
-         let already_seen = i :: already_seen in
-         (* let becomes = List.map f (might_become i) in *)
-         let rec try_becomes bs already_seen =
-           (match bs with
-            | [] -> raise Not_found
-            | h :: tl ->
-               (try
-                  lookup_interface_usual_case_header_inner already_seen h case_name f
-                with Not_found ->
-                     let already_seen = h :: already_seen in
-                     try_becomes tl already_seen))
-          (* in try_becomes becomes already_seen *)
 
-let lookup_usual_interface_case_header (i : typ interface) (case_name : string) f : usual_case_header =
+let lookup_usual_interface_case_header (i : interface) (case_name : string) f : usual_case_header =
   lookup_interface_usual_case_header_inner [] i case_name f
