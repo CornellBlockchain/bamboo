@@ -390,7 +390,6 @@ and exps_might_become (lst : typ exp list) : string list =
 and sentences_might_become ss =
   List.concat (List.map sentence_might_become ss)
 
-
 let case_might_become (case : typ case) : string list =
   let body = case.case_body in
   List.concat (List.map sentence_might_become body)
@@ -398,7 +397,6 @@ let case_might_become (case : typ case) : string list =
 let might_become (c : typ contract) : string list =
   let cases = c.contract_cases in
   List.concat (List.map case_might_become cases)
-
 
 let lookup_usual_case_in_single_contract c case_name =
   let cases = c.contract_cases in
@@ -454,3 +452,51 @@ let acceptable_as t0 t1 =
     match t0, t1 with
     | AddressType, GeneralInstanceType _ -> true
     | _, _ -> false
+
+
+
+let lookup_usual_case_in_single_interface i case_name =
+  let cases = i.interface_cases in
+  let cases = List.filter (fun c -> match c with
+                                     | DefaultCaseHeader -> false
+                                     | UsualCaseHeader uc ->
+                                        uc.case_name = case_name) cases in
+  let () = if (List.length cases = 0) then
+             raise Not_found
+           else if (List.length cases > 1) then
+             let () = Printf.eprintf "case %s duplicated\n%!" case_name in
+             failwith "case_lookup"
+  in
+  match cases with
+  | [] -> raise Not_found
+  | _ :: _ :: _ -> failwith "should not happen"
+  | [a] ->
+     begin match a with
+     | UsualCaseHeader uc -> uc
+     | DefaultCaseHeader -> failwith "lookup_usual_case_in_single_interface: default case found"
+     end
+
+let rec lookup_interface_usual_case_header_inner (already_seen : typ interface list)
+                                   (i : typ interface)
+                                   (case_name : string) f : usual_case_header =
+  if List.mem i already_seen then
+    raise Not_found
+  else
+    try
+      lookup_usual_case_in_single_interface i case_name
+    with Not_found ->
+         let already_seen = i :: already_seen in
+         (* let becomes = List.map f (might_become i) in *)
+         let rec try_becomes bs already_seen =
+           (match bs with
+            | [] -> raise Not_found
+            | h :: tl ->
+               (try
+                  lookup_interface_usual_case_header_inner already_seen h case_name f
+                with Not_found ->
+                     let already_seen = h :: already_seen in
+                     try_becomes tl already_seen))
+          (* in try_becomes becomes already_seen *)
+
+let lookup_usual_interface_case_header (i : typ interface) (case_name : string) f : usual_case_header =
+  lookup_interface_usual_case_header_inner [] i case_name f
