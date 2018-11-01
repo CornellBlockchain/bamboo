@@ -746,8 +746,7 @@ and prepare_argument le ce arg =
   (* stack: (..., accum) *)
   let original_stack_size = stack_size ce in
   let size = Syntax.size_of_typ (snd arg) in
-  print_int size;
-  let () = assert (size = 32) in
+  (* let () = assert (size = 32) in *)
   let ce = append_instruction ce (PUSH1 (Int size)) in
   (* stack: (..., accum, size) *)
   let ce = codegen_exp le ce RightAligned arg in
