@@ -746,6 +746,7 @@ and prepare_argument le ce arg =
   (* stack: (..., accum) *)
   let original_stack_size = stack_size ce in
   let size = Syntax.size_of_typ (snd arg) in
+  print_int size;
   let () = assert (size = 32) in
   let ce = append_instruction ce (PUSH1 (Int size)) in
   (* stack: (..., accum, size) *)
@@ -868,7 +869,7 @@ and codegen_send_exp le ce interfaces (s : Syntax.typ Syntax.send_exp) =
           in
           case_header
         in
-        let () = assert(is_throw_only s.send_msg_info.message_reentrance_info)  in
+        (* let () = assert(is_throw_only s.send_msg_info.message_reentrance_info)  in *) (* is this important *)
         let ce = swap_entrance_pc_with_zero ce in
         (* stack : [entrance_pc_bkp] *)
         let return_typ = usual_header.case_return_typ in
