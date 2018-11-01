@@ -848,6 +848,12 @@ and codegen_send_exp le ce interfaces (s : Syntax.typ Syntax.send_exp) =
            CodegenEnv.contract_lookup ce contract_id in
             Syntax.lookup_usual_case_header callee_contract method_name contract_lookup_by_name
         with Not_found ->
+          let rec list_print lst =
+            match lst with
+            | [] -> ()
+            | (a,b) :: t -> print_endline b.interface_name; list_print t;
+          in
+          if interfaces = [] then print_endline " empty interfaces";
           let (_, interface) =
             try  List.find (fun (_, i) -> i.interface_name = contract_name) interfaces
             with Not_found ->
@@ -1460,12 +1466,12 @@ let move_stack_top_to_memory typ le ce =
  * after this, the stack contains
  * ..., size, offset_in_memory
  *)
-let place_exp_in_memory le ce packing ((e, typ) : typ exp) =
+let place_exp_in_memory le ce ?(interfaces=[]) packing ((e, typ) : typ exp) =
   let original_stack_size = stack_size ce in
   let alignment = match packing with
     | ABIPacking -> RightAligned
     | TightPacking -> LeftAligned in
-  let ce = codegen_exp le ce alignment (e, typ) in
+  let ce = codegen_exp le ce ~interfaces alignment (e, typ) in
   let () = assert (stack_size ce = 1 + original_stack_size) in
   (* the stack layout depends on typ *)
   let ce = move_stack_top_to_memory typ le ce in
@@ -1505,14 +1511,14 @@ let rec place_exps_in_memory le ce packing (exps : typ exp list) =
 let return_mem_content le ce =
   append_instruction ce RETURN
 
-let add_return le ce (layout : LayoutInfo.layout_info) ret =
+let add_return le ce ?(interfaces=[]) (layout : LayoutInfo.layout_info) ret =
   let original_stack_size = stack_size ce in
   let e = ret.return_exp in
   let c = ret.return_cont in
   let (le, ce) = set_continuation le ce layout c in
   let ce = match e with
     | Some e ->
-       let (le, ce) = place_exp_in_memory le ce ABIPacking e in
+       let (le, ce) = place_exp_in_memory le ce ~interfaces ABIPacking e in
        return_mem_content le ce
     | None ->
        append_instruction ce STOP
@@ -1595,10 +1601,10 @@ and add_if le ce (layout : LayoutInfo.layout_info) cond bodyT bodyF =
   (le, ce)
 and add_sentences le ce layout ss =
   List.fold_left (fun (le, ce) s -> add_sentence le ce layout s) (le, ce) ss
-and add_sentence le ce (layout : LayoutInfo.layout_info) sent =
+and add_sentence le ce ?(interfaces=[]) (layout : LayoutInfo.layout_info) sent =
   match sent with
   | AbortSentence -> (le, add_throw ce)
-  | ReturnSentence ret -> add_return le ce layout ret
+  | ReturnSentence ret -> add_return le ce ~interfaces layout ret
   | AssignmentSentence (l, r) -> add_assignment le ce layout l r
   | VariableInitSentence i -> add_variable_init le ce layout i
   | IfThenOnly (cond, body) -> add_if_single le ce layout cond body (* this is a special case of the next *)
@@ -1663,7 +1669,7 @@ let add_case (le : LocationEnv.t) (ce : CodegenEnv.t) layout interfaces (cid : A
   let le = add_case_argument_locations le case in
   let ((le : LocationEnv.t), ce) =
     List.fold_left
-      (fun ((le : LocationEnv.t), ce) sent -> add_sentence le ce layout sent)
+      (fun ((le : LocationEnv.t), ce) sent -> add_sentence le ce ~interfaces layout sent)
       (le, ce) case.case_body in
   (le, ce)
 
