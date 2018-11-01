@@ -522,11 +522,11 @@ let lookup_usual_case_in_single_interface i case_name =
 
 let rec lookup_interface_usual_case_header_inner (already_seen : interface list)
                                    (i : interface)
-                                   (case_name : string) f : usual_case_header =
+                                   (case_name : string): usual_case_header =
   if List.mem i already_seen then
     raise Not_found
   else
       lookup_usual_case_in_single_interface i case_name
 
-let lookup_usual_interface_case_header (i : interface) (case_name : string) f : usual_case_header =
-  lookup_interface_usual_case_header_inner [] i case_name f
+let lookup_usual_interface_case_header (i : interface) (case_name : string): usual_case_header =
+  lookup_interface_usual_case_header_inner [] i case_name

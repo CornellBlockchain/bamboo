@@ -718,7 +718,7 @@ and codegen_exp
      failwith "codegen_exp EqualityExp of unexpected type"
   | SendExp s, _ ->
      let () = assert (alignment = RightAligned) in
-     codegen_send_exp le ce s
+     codegen_send_exp le ce interfaces s
   | NewExp new_e, GeneralInstanceType ctyp ->
      let () = assert (alignment = RightAligned) in
      codegen_new_exp le ce new_e ctyp
@@ -732,7 +732,7 @@ and codegen_exp
      let () = assert (ref_typ = ReferenceType [value_typ]) in
      let size = Syntax.size_of_typ value_typ in
      let () = assert (size <= 32) in (* assuming word-size *)
-     let ce = codegen_exp le ce RightAligned (reference, ref_typ) in (* pushes the pointer *)
+     let ce = codegen_exp le ce ~interfaces RightAligned (reference, ref_typ) in (* pushes the pointer *)
      let ce = append_instruction ce MLOAD in
      let () = assert (alignment = RightAligned) in
      ce
@@ -818,34 +818,50 @@ and obtain_return_values_from_memory ce =
   let ce = append_instruction ce POP in
   (* stack: out *)
   ce
-and codegen_send_exp le ce (s : Syntax.typ Syntax.send_exp) =
+and codegen_send_exp le ce interfaces (s : Syntax.typ Syntax.send_exp) =
   let original_stack_size = stack_size ce in
   let head_contract = s.send_head_contract in
   match snd head_contract with
   | GeneralInstanceType contract_name ->
-     let callee_contract_id =
-       try CodegenEnv.cid_lookup ce contract_name
-       with Not_found ->
-         let () = Printf.eprintf "A contract of name %s is unknown.\n%!" contract_name in
-         raise Not_found
-     in
-     let callee_contract : Syntax.typ Syntax.contract =
-       CodegenEnv.contract_lookup ce callee_contract_id in
-     let contract_lookup_by_name (name : string) : Syntax.typ Syntax.contract =
-       let contract_id =
-         begin try
-           CodegenEnv.cid_lookup ce name
-         with Not_found ->
-           let () = Printf.eprintf "A contract of name %s is unknown.\n%!" contract_name in
-           raise Not_found
-         end
-       in
-       CodegenEnv.contract_lookup ce contract_id in
-     begin match s.send_head_method with
+  begin match s.send_head_method with
      | None -> failwith "could not find the method name"
      | Some method_name ->
-        let usual_header : usual_case_header =
-          Syntax.lookup_usual_case_header callee_contract method_name contract_lookup_by_name in
+      let usual_header : usual_case_header =
+        try
+         let callee_contract_id =
+           try CodegenEnv.cid_lookup ce contract_name
+           with Not_found ->
+             let () = Printf.eprintf "A contract of name %s is unknown.\n%!" contract_name in
+             raise Not_found
+         in
+         let callee_contract : Syntax.typ Syntax.contract =
+           CodegenEnv.contract_lookup ce callee_contract_id in
+         let contract_lookup_by_name (name : string) : Syntax.typ Syntax.contract =
+           let contract_id =
+             begin try
+               CodegenEnv.cid_lookup ce name
+             with Not_found ->
+               let () = Printf.eprintf "A contract of name %s is unknown.\n%!" contract_name in
+               raise Not_found
+             end
+           in
+           CodegenEnv.contract_lookup ce contract_id in
+            Syntax.lookup_usual_case_header callee_contract method_name contract_lookup_by_name
+        with Not_found ->
+          let (_, interface) =
+            try  List.find (fun (_, i) -> i.interface_name = contract_name) interfaces
+            with Not_found ->
+              let () = Printf.eprintf "An interface of name %s is unknown.\n%!" contract_name in
+              raise Not_found
+          in
+            let case_header =
+            try Syntax.lookup_usual_interface_case_header interface method_name
+            with Not_found ->
+              let () = Printf.eprintf "A contract of name %s is unknown.\n%!" contract_name in
+               raise Not_found
+          in
+          case_header
+        in
         let () = assert(is_throw_only s.send_msg_info.message_reentrance_info)  in
         let ce = swap_entrance_pc_with_zero ce in
         (* stack : [entrance_pc_bkp] *)

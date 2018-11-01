@@ -172,6 +172,8 @@ val non_mapping_arg : arg -> bool
     [name] in the contract [c].  [f] is a function that looks up a contract by its name. *)
 val lookup_usual_case_header : typ contract -> string -> (string -> typ contract) -> usual_case_header
 
+val lookup_usual_interface_case_header : interface -> string -> usual_case_header
+
 (** [might_become c] lists the name of the contracts that [c] might become, except [c] itself. *)
 val might_become : typ contract -> string list
 
